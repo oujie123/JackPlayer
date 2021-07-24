@@ -67,7 +67,11 @@ void JackPlayer::prepare_() {
     av_dict_free(&dictionary);
 
     if (ret) {
-        // TODO 回调java错误信息
+        if (helper) {
+            helper->onError(THREAD_CHILD, FFMPEG_CAN_NOT_OPEN_URL);
+            // ffmpeg 根据返回码获得错误信息
+            // char *error = av_err2str(ret);
+        }
         return;
     }
 
@@ -75,7 +79,9 @@ void JackPlayer::prepare_() {
     ret = avformat_find_stream_info(formatContext, 0);
 
     if (ret < 0) {
-        // TODO 回调java错误信息
+        if (helper) {
+            helper->onError(THREAD_CHILD, FFMPEG_CAN_NOT_FIND_STREAMS);
+        }
         return;
     }
 
@@ -92,12 +98,20 @@ void JackPlayer::prepare_() {
 
         // TODO 第六步：（根据上面的【参数】）获取编解码器
         AVCodec *codec = avcodec_find_decoder(parameters->codec_id);
+        if (!codec) {
+            if (helper) {
+                helper->onError(THREAD_CHILD, FFMPEG_FIND_DECODER_FAIL);
+            }
+            return;
+        }
 
         // TODO 第七步：编解码器 上下文
         AVCodecContext *avCodecContext = avcodec_alloc_context3(codec);
 
         if (!avCodecContext) {
-            // TODO 回调java错误信息
+            if (helper) {
+                helper->onError(THREAD_CHILD, FFMPEG_ALLOC_CODEC_CONTEXT_FAIL);
+            }
             return;
         }
 
@@ -105,7 +119,9 @@ void JackPlayer::prepare_() {
         ret = avcodec_parameters_to_context(avCodecContext, parameters);
 
         if (ret < 0) {
-            // TODO JNI 反射回调到Java方法，并提示
+            if (helper) {
+                helper->onError(THREAD_CHILD, FFMPEG_CODEC_CONTEXT_PARAMETERS_FAIL);
+            }
             return;
         }
 
@@ -113,21 +129,26 @@ void JackPlayer::prepare_() {
         ret = avcodec_open2(avCodecContext, codec, 0);
 
         if (ret) {
-            // TODO JNI 反射回调到Java方法，并提示
+            if (helper) {
+                helper->onError(THREAD_CHILD, FFMPEG_OPEN_DECODER_FAIL);
+            }
             return;
         }
 
         // TODO 第十步：从编解码器参数中，获取流的类型 codec_type, 判断音频 视频
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
-            audioChannel = new AudioChannel();
-        } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO){
-            videoChannel = new VideoChannel();
+            audioChannel = new AudioChannel(i, avCodecContext);
+        } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
+            videoChannel = new VideoChannel(i, avCodecContext);
+            videoChannel->setRenderCallback(renderCallback);
         }
     } // for end
 
     // TODO 第十一步: 如果流中 没有音频 也没有 视频 【健壮性校验】
     if (!audioChannel || !videoChannel) {
-        // TODO JNI 反射回调到Java方法，并提示
+        if (helper) {
+            helper->onError(THREAD_CHILD, FFMPEG_NOMEDIA);
+        }
         return;
     }
 
@@ -143,4 +164,58 @@ void JackPlayer::prepare() {
 
     // 创建子线程
     pthread_create(&pid_prepare, 0, task_prepare, this);
+}
+
+//===========================以下是start to play内容====================================
+/**
+ *  AVPacket 影视频的压缩包
+ */
+void JackPlayer::start_() {
+    while (isPlaying) {
+        // 分配AVPacket 内存
+        AVPacket *pkt = av_packet_alloc();
+        int ret = av_read_frame(formatContext, pkt);
+        if (!ret) { // 获取到pkt就进来
+            // 在该if内部区分音视频加入队列
+            if (videoChannel && videoChannel->stream_index == pkt->stream_index) {
+                // 将视频压缩包放入videoChannel中
+                videoChannel->packets.insertToQueue(pkt);
+            } else if(audioChannel && audioChannel->stream_index == pkt->stream_index) {
+                // audioChannel->packets.insertToQueue(pkt);
+            }
+        } else if(ret == AVERROR_EOF) {
+            // 文件读到末尾，并不代表播放完毕，需要处理播放问题
+        } else {
+            // 读到的frame有问题，结束当前循环
+            break;
+        }
+    } // end while
+
+    isPlaying = 0;
+    videoChannel->stop();
+    audioChannel->stop();
+}
+
+void *task_start(void *args) {
+    JackPlayer *player = static_cast<JackPlayer *>(args);
+    player->start_();
+    return 0;
+}
+
+void JackPlayer::start() {
+    isPlaying = 1;
+
+    if (videoChannel) {
+        videoChannel->start();
+    }
+
+    if (audioChannel) {
+        audioChannel->start();
+    }
+
+    pthread_create(&pid_start, 0, task_start, this);
+}
+
+void JackPlayer::setRenderCallback(RenderCallback renderCallback) {
+    this->renderCallback = renderCallback;
 }

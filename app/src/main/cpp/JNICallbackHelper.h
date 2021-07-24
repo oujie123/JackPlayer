@@ -15,13 +15,16 @@ private:
     JNIEnv *env = 0;
     jobject job;
     jmethodID jmd_prepared;
+    jmethodID jmd_on_error;
 
 public:
-    JNICallbackHelper(JavaVM *vm,JNIEnv *env,jobject obj);
+    JNICallbackHelper(JavaVM *vm, JNIEnv *env, jobject obj);
 
     virtual ~JNICallbackHelper();
 
     void onPrepared(int thread_mode);
+
+    void onError(int thread_mode, int error_code);
 };
 
 #endif //JACKPLAYER_JNICALLBAKCHELPER_H
