@@ -10,6 +10,7 @@ extern "C" {
 };
 
 #include "safe_queue.h"
+#include "log4c.h"
 
 class BaseChannel {
 

@@ -181,7 +181,7 @@ void JackPlayer::start_() {
                 // 将视频压缩包放入videoChannel中
                 videoChannel->packets.insertToQueue(pkt);
             } else if(audioChannel && audioChannel->stream_index == pkt->stream_index) {
-                // audioChannel->packets.insertToQueue(pkt);
+                audioChannel->packets.insertToQueue(pkt);
             }
         } else if(ret == AVERROR_EOF) {
             // 文件读到末尾，并不代表播放完毕，需要处理播放问题
@@ -205,10 +205,12 @@ void *task_start(void *args) {
 void JackPlayer::start() {
     isPlaying = 1;
 
+    // 视频解码，播放
     if (videoChannel) {
         videoChannel->start();
     }
 
+    // 音频解码，播放
     if (audioChannel) {
         audioChannel->start();
     }
