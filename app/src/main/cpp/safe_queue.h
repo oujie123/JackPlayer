@@ -14,20 +14,23 @@ template<typename T>
 class SafeQueue {
 private:
     typedef void (*ReleaseCallback)(T *); // 函数指针定义 做回调 用来释放T里面的内容的
+    typedef void (*SyncCallback)(queue<T> &);
+
 private:
     queue<T> queue;
     pthread_mutex_t mutex; // 互斥锁
     pthread_cond_t cond; //等待和唤醒
     int work; // 标志当前ffmpeg是否在工作
     ReleaseCallback releaseCallback;
+    SyncCallback syncCallback;
 
 public:
-    SafeQueue(){
+    SafeQueue() {
         pthread_mutex_init(&mutex, 0); // 初始化互斥锁   动态加载锁
         pthread_cond_init(&cond, 0); // 初始化条件变量
     }
 
-    ~SafeQueue(){
+    ~SafeQueue() {
         pthread_mutex_destroy(&mutex);
         pthread_cond_destroy(&cond);
     }
@@ -92,18 +95,18 @@ public:
         pthread_mutex_unlock(&mutex); // 多线程的访问（要解锁）
     }
 
-    int empty(){
+    int empty() {
         return queue.empty();
     }
 
-    int size(){
+    int size() {
         return queue.size();
     }
 
     /**
      * 清空队列中所有的数据，循环一个一个的删除
      */
-    void clear(){
+    void clear() {
         pthread_mutex_lock(&mutex); // 多线程的访问（先锁住）
 
         unsigned int size = queue.size();
@@ -111,7 +114,7 @@ public:
         for (int i = 0; i < size; ++i) {
             //循环释放队列中的数据
             T value = queue.front();
-            if(releaseCallback){
+            if (releaseCallback) {
                 releaseCallback(&value); // 让外界去释放堆区空间
             }
             queue.pop(); // 删除队列中的数据，让队列为0
@@ -124,8 +127,18 @@ public:
      * 设置此函数指针的回调，让外界去释放
      * @param releaseCallback
      */
-    void setReleaseCallback(ReleaseCallback releaseCallback){
+    void setReleaseCallback(ReleaseCallback releaseCallback) {
         this->releaseCallback = releaseCallback;
+    }
+
+    void setSyncCallback(SyncCallback syncCallback) {
+        this->syncCallback = syncCallback;
+    }
+
+    void sync() {
+        pthread_mutex_lock(&mutex);
+        syncCallback(queue);
+        pthread_mutex_unlock(&mutex);
     }
 };
 

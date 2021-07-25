@@ -27,6 +27,8 @@ public:
     uint8_t *out_buffer = 0;
     SwrContext *swr_context = 0;
 
+    double audio_time;
+
 public:
     SLObjectItf engineObject = 0;  // 引擎对象
     SLEngineItf engineItf = 0; // 引擎接口
@@ -37,7 +39,7 @@ public:
     SLAndroidSimpleBufferQueueItf bqPlayerBufferQueue = 0; // 播放器队列接口
 
 public:
-    AudioChannel(int stream_index, AVCodecContext * avCodecContext);
+    AudioChannel(int stream_index, AVCodecContext * avCodecContext, AVRational timeBase);
 
     virtual ~AudioChannel();
 

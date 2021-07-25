@@ -4,8 +4,8 @@
 
 #include "AudioChannel.h"
 
-AudioChannel::AudioChannel(int stream_index, AVCodecContext *avCodecContext)
-        : BaseChannel(stream_index, avCodecContext) {
+AudioChannel::AudioChannel(int stream_index, AVCodecContext *avCodecContext, AVRational timeBase)
+        : BaseChannel(stream_index, avCodecContext, timeBase) {
     // 定义缓冲区和缓冲区大小    out_buff/out_buff_size
 
     // 音频三要素
@@ -179,19 +179,19 @@ int AudioChannel::getPcm() {
         // TODO 开始重采样
         // 获取单通道样本数
         int dsr_nb_samples = static_cast<int>(av_rescale_rnd(
-                        swr_get_delay(swr_context, frame->sample_rate) + frame->sample_rate,
-                        out_sample_rate, // 输出采样率
-                        frame->sample_rate,//输入采样率
-                        AV_ROUND_UP));
+                swr_get_delay(swr_context, frame->sample_rate) + frame->sample_rate,
+                out_sample_rate, // 输出采样率
+                frame->sample_rate,//输入采样率
+                AV_ROUND_UP));
 
         // samples_per_channel每个通道重采样后的样本数，即重采样后的采样数
         int samples_per_channel = swr_convert(swr_context,
-                                              // 输出区域
+                // 输出区域
                                               &out_buffer, // 输出结果的buffer
                                               dsr_nb_samples, // 单通道样本数,数据真正大小还需要与位声和通道数相乘
 
-                                              //输入区域
-                                              (const uint8_t **)(frame->data),
+                //输入区域
+                                              (const uint8_t **) (frame->data),
                                               frame->nb_samples);
         // 计算buffer中的数据大小
         pcm_data_size = samples_per_channel * out_sample_size * out_channels;
@@ -204,6 +204,17 @@ int AudioChannel::getPcm() {
         // 一秒多少帧：44100 / 1024 = 43.066 帧 （每秒43帧）
         // 一秒钟音频大小： 44100 * 2 * 2 = 176400 byte
         // 一帧音频大小：1024 * 2 * 2 = 4096 byte
+
+        // TODO 音视频同步，以音频为基准
+        /**
+        typedef struct AVRational{
+            int num; ///< Numerator   分子
+            int den; ///< Denominator 分母
+        } AVRational;
+         */
+
+        // audio_time：0.000000  0.0231123
+        audio_time = frame->best_effort_timestamp * av_q2d(time_base);  // 音频播放的时间戳， 单位：时间基 （time base）
 
         break;
     } // end while

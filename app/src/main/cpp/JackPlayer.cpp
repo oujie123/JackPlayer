@@ -137,11 +137,23 @@ void JackPlayer::prepare_() {
             return;
         }
 
+        // 获取时间基传给父类
+        AVRational time_base = stream->time_base;
+
         // TODO 第十步：从编解码器参数中，获取流的类型 codec_type, 判断音频 视频
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
-            audioChannel = new AudioChannel(stream_index, avCodecContext);
+            audioChannel = new AudioChannel(stream_index, avCodecContext, time_base);
         } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
-            videoChannel = new VideoChannel(stream_index, avCodecContext);
+            // 虽然是视频流，但是是封面格式，不用播放
+            if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+                continue;
+            }
+
+            // 获取fps
+            AVRational fps_rational = stream->avg_frame_rate;
+            int fps = static_cast<int>(av_q2d(fps_rational));
+
+            videoChannel = new VideoChannel(stream_index, avCodecContext, time_base, fps);
             videoChannel->setRenderCallback(renderCallback);
         }
     } // for end
@@ -197,10 +209,10 @@ void JackPlayer::start_() {
             if (videoChannel && videoChannel->stream_index == pkt->stream_index) {
                 // 将视频压缩包放入videoChannel中
                 videoChannel->packets.insertToQueue(pkt);
-            } else if(audioChannel && audioChannel->stream_index == pkt->stream_index) {
+            } else if (audioChannel && audioChannel->stream_index == pkt->stream_index) {
                 audioChannel->packets.insertToQueue(pkt);
             }
-        } else if(ret == AVERROR_EOF) {
+        } else if (ret == AVERROR_EOF) {
             // 文件读到末尾，并不代表播放完毕，需要处理播放问题
             // TODO 优化1.3 : 文件读取完毕退出循环
             if (audioChannel->packets.empty() && videoChannel->packets.empty()) {
@@ -228,6 +240,7 @@ void JackPlayer::start() {
 
     // 视频解码，播放
     if (videoChannel) {
+        videoChannel->setAudioChannel(audioChannel);
         videoChannel->start();
     }
 

@@ -4,9 +4,42 @@
 
 #include "VideoChannel.h"
 
-VideoChannel::VideoChannel(int stream_index, AVCodecContext *avCodecContext1) : BaseChannel(
-        stream_index, avCodecContext1) {
+/**
+ * 丢包
+ *
+ * @param q
+ */
+void dropAVFrame(queue<AVFrame *> &q) {
+    if (!q.empty()) {
+        AVFrame *frame = q.front();
+        BaseChannel::releaseAVFrame(&frame);
+        q.pop();
+    }
+}
 
+/**
+ * 丢压缩包，需要考虑关键帧不能丢
+ *
+ * @param q
+ */
+void dropAVPacket(queue<AVPacket *> &q) {
+    while (!q.empty()) {
+        AVPacket *packet = q.front();
+        if (packet->flags != AV_PKT_FLAG_KEY) {
+            // 如果不是关键帧
+            BaseChannel::releaseAVPacket(&packet);
+            q.pop();
+        } else {
+            break; // 如果是关键帧，直接结束
+        }
+    }
+}
+
+VideoChannel::VideoChannel(int stream_index, AVCodecContext *avCodecContext1, AVRational timeBase,
+                           int fps) : BaseChannel(
+        stream_index, avCodecContext1, timeBase), fps(fps) {
+    frames.setSyncCallback(dropAVFrame);
+    packets.setSyncCallback(dropAVPacket);
 }
 
 VideoChannel::~VideoChannel() {
@@ -168,6 +201,42 @@ void VideoChannel::videoPlay() {
                   dst_data,
                   dst_linesize);
 
+        // 间隔1/fps时间间隔，写一次内存，展示一下图像
+        // FPS间隔时间, extra_delay大概为：0.0400000
+        double extra_delay = frame->repeat_pict / (2 * fps);  // 源码提供的公式
+        double fps_delay = 1.0 / fps; // 每一帧的延时时间
+        double real_delay = fps_delay + extra_delay;
+
+        // 根据视频的FPS延时
+        //av_usleep(static_cast<unsigned int>(real_delay * 1000000));
+
+        // TODO 音视频同步
+        double video_time = frame->best_effort_timestamp * av_q2d(time_base);
+        double audio_time = audioChannel->audio_time;
+
+        double time_diff = video_time - audio_time;   // 大于0，视频快，需要等音频
+
+        // 判断时间差值
+        if (time_diff > 0) {
+            // 视频时间大
+            if (time_diff > 1) {
+                // 视频快太多,拖动条拖动视频太多，有个缓冲效果
+                av_usleep(static_cast<unsigned int>((real_delay * 2) * 1000000));
+            } else {
+                // 视频快0 - 1 之间 一帧之内
+                av_usleep(static_cast<unsigned int>((real_delay + time_diff) * 1000000));
+            }
+        } else {
+            // 音频快，视频慢，视频需要追音频，采取丢包的方式追赶
+            // 丢帧：不能丢I帧！！
+            // 如果差距不大，可以直接丢包,0.05是经验值
+            // fabs取绝对值方法
+            if (fabs(time_diff) <= 0.05) {
+                frames.sync();
+                continue;
+            }
+        }
+
         // 如何渲染一帧图像？
         // 答：宽，高，数据  ----> 函数指针的声明
         // 由于此方法拿不到Surface，只能回调给 native-lib.cpp
@@ -191,4 +260,8 @@ void VideoChannel::videoPlay() {
 
 void VideoChannel::setRenderCallback(RenderCallback renderCallback) {
     this->renderCallback = renderCallback;
+}
+
+void VideoChannel::setAudioChannel(AudioChannel *pChannel) {
+    this->audioChannel = pChannel;
 }

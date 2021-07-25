@@ -25,7 +25,9 @@ public:
     bool isPlaying; // 音频 和 视频 都会有的标记 是否播放
     AVCodecContext * avCodecContext = 0;
 
-    BaseChannel(int stream_index,AVCodecContext *avCodecContext1);
+    AVRational time_base;  // 音视频同步参数
+
+    BaseChannel(int stream_index,AVCodecContext *avCodecContext1, AVRational time_base);
 
     ~BaseChannel();
 

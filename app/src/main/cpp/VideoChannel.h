@@ -6,6 +6,7 @@
 #define JACKPLAYER_VIDEOCHANNEL_H
 
 #include "BaseChannel.h"
+#include "AudioChannel.h"
 
 extern "C" {
 #include <libswscale/swscale.h>
@@ -21,8 +22,11 @@ private:
     pthread_t pid_video_play;
     RenderCallback renderCallback;
 
+    int fps; // 一秒多少帧
+    AudioChannel *audioChannel = nullptr;
+
 public:
-    VideoChannel(int stream_index,AVCodecContext *avCodecContext1);
+    VideoChannel(int stream_index,AVCodecContext *avCodecContext1, AVRational timeBase, int fps);
 
     virtual ~VideoChannel();
 
@@ -35,6 +39,8 @@ public:
     void videoPlay();
 
     void setRenderCallback(RenderCallback renderCallback);
+
+    void setAudioChannel(AudioChannel *pChannel);
 };
 
 #endif //JACKPLAYER_VIDEOCHANNEL_H

@@ -4,8 +4,8 @@
 
 #include "BaseChannel.h"
 
-BaseChannel::BaseChannel(int stream_index, AVCodecContext *avCodecContext1)
-        : stream_index(stream_index), avCodecContext(avCodecContext1) {
+BaseChannel::BaseChannel(int stream_index, AVCodecContext *avCodecContext1, AVRational timeBase)
+        : stream_index(stream_index), avCodecContext(avCodecContext1), time_base(timeBase) {
     packets.setReleaseCallback(releaseAVPacket);
     frames.setReleaseCallback(releaseAVFrame);
 }

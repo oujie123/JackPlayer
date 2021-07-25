@@ -32,6 +32,10 @@ public class MainActivity extends AppCompatActivity {
         mJackPlayer.setSurfaceView(mSurfaceView);
         mJackPlayer.setSourceData(new File(Environment.getExternalStorageDirectory() + File.separator + "demo.mp4")
                 .getAbsolutePath());
+
+        // 拉流方式播放
+        mJackPlayer.setSourceData("rtmp://58.200.131.2:1935/livetv/hunantv");
+
         mJackPlayer.setOnPreparedListener(new JackPlayer.OnPreparedListener() {
             @Override
             public void onPrepared() {
