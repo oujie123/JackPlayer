@@ -7,10 +7,14 @@
 
 extern "C" {
 #include <libavcodec/avcodec.h>
+#include <libavutil/time.h>
 };
 
 #include "safe_queue.h"
 #include "log4c.h"
+
+#define SOURCE_QUEUE_THRESHOLD 100
+#define PRODUCER_WAITING_TIME 10 * 1000
 
 class BaseChannel {
 

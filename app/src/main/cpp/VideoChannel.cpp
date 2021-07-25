@@ -16,30 +16,30 @@ VideoChannel::~VideoChannel() {
 void *task_video_decode(void *args) {
     VideoChannel *channel = static_cast<VideoChannel *>(args);
     channel->videoDecode();
-    return 0;
+    return nullptr;
 }
 
 void *task_video_play(void *args) {
     VideoChannel *channel = static_cast<VideoChannel *>(args);
     channel->videoPlay();
-    return 0;
+    return nullptr;
 }
 
 /**
  * 解码和播放视频
  */
 void VideoChannel::start() {
-    isPlaying = 1;
+    isPlaying = true;
 
     // 队列开始工作了
     packets.setWork(1);
     frames.setWork(1);
 
     // 第一个线程： 视频：取出队列的压缩包 进行解码，解码后的原始包 再push队列中去
-    pthread_create(&pid_video_decode, 0, task_video_decode, this);
+    pthread_create(&pid_video_decode, nullptr, task_video_decode, this);
 
     // 第二线线程：视频：从队列取出原始包，播放
-    pthread_create(&pid_video_play, 0, task_video_play, this);
+    pthread_create(&pid_video_play, nullptr, task_video_play, this);
 }
 
 void VideoChannel::stop() {
@@ -47,11 +47,19 @@ void VideoChannel::stop() {
 }
 
 /**
+ * TODO 优化视频帧队列大小
+ *
  * 将原始视频包取出I帧，然后放入frame队列
  */
 void VideoChannel::videoDecode() {
-    AVPacket *packet = 0;
+    AVPacket *packet = nullptr;
     while (isPlaying) {
+        // TODO 2.1 控制在队列的视频帧数量
+        if (frames.size() > SOURCE_QUEUE_THRESHOLD) {
+            av_usleep(PRODUCER_WAITING_TIME);
+            continue;
+        }
+
         int ret = packets.getQueueAndDel(packet);
         if (!isPlaying) {
             // 阻塞方法，可能拿到packet已经不播放了，直接跳出循环，释放资源
@@ -66,7 +74,8 @@ void VideoChannel::videoDecode() {
         ret = avcodec_send_packet(avCodecContext, packet);
 
         // 发送完成之后ffmpeg会缓存一份，可以放心释放
-        releaseAVPacket(&packet);
+        // TODO 优化 2.3: 释放时机应该是当frame队列之后，然后还要释放所指堆空间的内存,应该将该逻辑放在后面
+        // releaseAVPacket(&packet);
 
         if (ret) {
             // 发送失败释放资源
@@ -80,12 +89,24 @@ void VideoChannel::videoDecode() {
             // 当前真不可用，可能是B帧参考前面成功  B帧参考后面失败   可能是P帧没有出来，再拿一次就行了
             continue;
         } else if (ret != 0) {
+            // TODO 优化2.2 :获取帧出错，应该全部释放frame和packet
+            if (frame) {
+                releaseAVFrame(&frame);
+                frame = nullptr;
+            }
             break;
         }
 
         // 成功拿到原始帧了，加入到Frames队列
         frames.insertToQueue(frame);
+
+        // TODO 优化 3.1: 释放时机应该是当frame队列之后，然后还要释放所指堆空间的内存
+        // 先释放引用，再释放堆
+        av_packet_unref(packet);  // 成员所指的堆空间
+        releaseAVPacket(&packet);
     }
+    // TODO 优化 3.2: 流程出错跳出循环内存释放点
+    av_packet_unref(packet);
     releaseAVPacket(&packet);
 }
 
@@ -154,8 +175,14 @@ void VideoChannel::videoPlay() {
         // 数组被传递会退化成指针，默认就是去1元素
         renderCallback(dst_data[0], avCodecContext->width, avCodecContext->height, dst_linesize[0]);
 
-        releaseAVFrame(&frame); // 显示完成，数据立马释放
+        // releaseAVFrame(&frame); // 显示完成，数据立马释放
+
+        // TODO 优化5.1: Frame 释放
+        av_frame_unref(frame);
+        releaseAVFrame(&frame);
     } // end while
+    // TODO 优化5.2: 出错时，Frame 释放
+    av_frame_unref(frame);
     releaseAVFrame(&frame);
     isPlaying = 0;
     av_free(&dst_data[0]);

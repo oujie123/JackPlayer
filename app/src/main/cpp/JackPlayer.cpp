@@ -20,9 +20,11 @@ JackPlayer::JackPlayer(const char *sourceData, JNICallbackHelper *helper) {
 JackPlayer::~JackPlayer() {
     if (sourceData) {
         delete sourceData;
+        sourceData = nullptr;
     }
     if (helper) {
         delete helper;
+        helper = nullptr;
     }
 }
 
@@ -42,7 +44,7 @@ void *task_prepare(void *args) {
     player->prepare_();
 
     // 必须返回，坑，错误很难找
-    return 0;
+    return nullptr;
 }
 
 // 此函数在子线程
@@ -53,7 +55,7 @@ void JackPlayer::prepare_() {
     formatContext = avformat_alloc_context();
 
     // TODO 第一步：打开媒体地址（文件路径， 直播地址rtmp）
-    AVDictionary *dictionary = 0;
+    AVDictionary *dictionary = nullptr;
     av_dict_set(&dictionary, "timeout", "5000000", 0);
 
     /**
@@ -62,7 +64,7 @@ void JackPlayer::prepare_() {
      * 3，AVInputFormat *fmt  Mac、Windows 摄像头、麦克风， 目前安卓用不到
      * 4，各种设置：例如：Http 连接超时， 打开rtmp的超时  AVDictionary **options
      */
-    int ret = avformat_open_input(&formatContext, sourceData, 0, &dictionary);
+    int ret = avformat_open_input(&formatContext, sourceData, nullptr, &dictionary);
 
     av_dict_free(&dictionary);
 
@@ -76,7 +78,7 @@ void JackPlayer::prepare_() {
     }
 
     // TODO 第二步：查找媒体中的音视频流的信息
-    ret = avformat_find_stream_info(formatContext, 0);
+    ret = avformat_find_stream_info(formatContext, nullptr);
 
     if (ret < 0) {
         if (helper) {
@@ -86,9 +88,9 @@ void JackPlayer::prepare_() {
     }
 
     // TODO 第三步: 根据流信息，流的个数，用循环来找，一般第0个代表视频流，第一个代表音频流
-    for (int i = 0; i < formatContext->nb_streams; i++) {
+    for (int stream_index = 0; stream_index < formatContext->nb_streams; stream_index++) {
         // TODO 第四步：获取媒体流（视频，音频）
-        AVStream *stream = formatContext->streams[i];
+        AVStream *stream = formatContext->streams[stream_index];
 
         /**
          * TODO 第五步：从上面的流中 获取 编码解码的【参数】
@@ -126,7 +128,7 @@ void JackPlayer::prepare_() {
         }
 
         // TODO 第九步：打开解码器
-        ret = avcodec_open2(avCodecContext, codec, 0);
+        ret = avcodec_open2(avCodecContext, codec, nullptr);
 
         if (ret) {
             if (helper) {
@@ -137,9 +139,9 @@ void JackPlayer::prepare_() {
 
         // TODO 第十步：从编解码器参数中，获取流的类型 codec_type, 判断音频 视频
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
-            audioChannel = new AudioChannel(i, avCodecContext);
+            audioChannel = new AudioChannel(stream_index, avCodecContext);
         } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
-            videoChannel = new VideoChannel(i, avCodecContext);
+            videoChannel = new VideoChannel(stream_index, avCodecContext);
             videoChannel->setRenderCallback(renderCallback);
         }
     } // for end
@@ -168,12 +170,27 @@ void JackPlayer::prepare() {
 
 //===========================以下是start to play内容====================================
 /**
+ *  TODO 控制packet队列的数据大小，防止生产太快，消费太慢
+ *
  *  AVPacket 影视频的压缩包
  */
 void JackPlayer::start_() {
+    AVPacket *pkt = nullptr;
     while (isPlaying) {
+        // TODO 优化1.1 : 控制视频包个数
+        if (videoChannel && videoChannel->packets.size() > SOURCE_QUEUE_THRESHOLD) {
+            av_usleep(PRODUCER_WAITING_TIME); // 单位微妙
+            continue;
+        }
+
+        // TODO 优化1.2 : 控制视频包个数
+        if (audioChannel && audioChannel->packets.size() > SOURCE_QUEUE_THRESHOLD) {
+            av_usleep(PRODUCER_WAITING_TIME); // 单位微妙
+            continue;
+        }
+
         // 分配AVPacket 内存
-        AVPacket *pkt = av_packet_alloc();
+        pkt = av_packet_alloc();
         int ret = av_read_frame(formatContext, pkt);
         if (!ret) { // 获取到pkt就进来
             // 在该if内部区分音视频加入队列
@@ -185,13 +202,17 @@ void JackPlayer::start_() {
             }
         } else if(ret == AVERROR_EOF) {
             // 文件读到末尾，并不代表播放完毕，需要处理播放问题
+            // TODO 优化1.3 : 文件读取完毕退出循环
+            if (audioChannel->packets.empty() && videoChannel->packets.empty()) {
+                break;
+            }
         } else {
             // 读到的frame有问题，结束当前循环
             break;
         }
     } // end while
 
-    isPlaying = 0;
+    isPlaying = false;
     videoChannel->stop();
     audioChannel->stop();
 }
@@ -199,11 +220,11 @@ void JackPlayer::start_() {
 void *task_start(void *args) {
     JackPlayer *player = static_cast<JackPlayer *>(args);
     player->start_();
-    return 0;
+    return nullptr;
 }
 
 void JackPlayer::start() {
-    isPlaying = 1;
+    isPlaying = true;
 
     // 视频解码，播放
     if (videoChannel) {
@@ -215,7 +236,7 @@ void JackPlayer::start() {
         audioChannel->start();
     }
 
-    pthread_create(&pid_start, 0, task_start, this);
+    pthread_create(&pid_start, nullptr, task_start, this);
 }
 
 void JackPlayer::setRenderCallback(RenderCallback renderCallback) {

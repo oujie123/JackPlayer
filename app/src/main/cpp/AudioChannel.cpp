@@ -84,6 +84,12 @@ void AudioChannel::stop() {
 void AudioChannel::audioDecode() {
     AVPacket *pkt = 0;
     while (isPlaying) {
+        // TODO 优化 3.1 : 控制音频队列中的音频帧数量
+        if (frames.size() > SOURCE_QUEUE_THRESHOLD) {
+            av_usleep(PRODUCER_WAITING_TIME);
+            continue;
+        }
+
         int ret = packets.getQueueAndDel(pkt);
         if (!isPlaying) {
             break;
@@ -94,7 +100,7 @@ void AudioChannel::audioDecode() {
 
         // 发送packet
         ret = avcodec_send_packet(avCodecContext, pkt);
-        releaseAVPacket(&pkt);
+        // releaseAVPacket(&pkt);
         if (ret) {
             break;
         }
@@ -105,12 +111,24 @@ void AudioChannel::audioDecode() {
         if (ret == AVERROR(EAGAIN)) {
             continue;
         } else if (ret != 0) {
+            // TODO 优化3.2 :获取帧出错，应该全部释放frame和packet
+            if (frame) {
+                releaseAVFrame(&frame);
+                frame = nullptr;
+            }
             break;
         }
 
         // 将pcm数据放入队列
         frames.insertToQueue(frame);
+
+        // TODO 优化 4.1: 释放时机应该是当frame队列之后，然后还要释放所指堆空间的内存
+        // 先释放引用，再释放堆
+        av_packet_unref(pkt);
+        releaseAVPacket(&pkt);
     } // end while
+    // TODO 优化 4.2: 流程出错跳出循环内存释放点
+    av_packet_unref(pkt);
     releaseAVPacket(&pkt);
 }
 
@@ -148,7 +166,7 @@ int AudioChannel::getPcm() {
     int pcm_data_size = 0;
 
     //从frame中获取pcm数据
-    AVFrame *frame;
+    AVFrame *frame = nullptr;
     while (isPlaying) {
         int ret = frames.getQueueAndDel(frame);
         if (!isPlaying) {
@@ -180,10 +198,19 @@ int AudioChannel::getPcm() {
 
         // 每一个pcm音频包大小
         // 单通道样本数为1024；包大小为  1024 * 2 * 2 = 4096字节
-        // 4096是单声道的样本数，44100是每秒钟采集的采样点数
+        // 4096是一帧音频包的大小，44100是每秒钟采集的采样点数
+
+        // 1024 是单通道采集的样本数
+        // 一秒多少帧：44100 / 1024 = 43.066 帧 （每秒43帧）
+        // 一秒钟音频大小： 44100 * 2 * 2 = 176400 byte
+        // 一帧音频大小：1024 * 2 * 2 = 4096 byte
 
         break;
     } // end while
+
+    // TODO 优化6.1: Frame 释放
+    av_frame_unref(frame);
+    releaseAVFrame(&frame);
 
     return pcm_data_size;
 }
