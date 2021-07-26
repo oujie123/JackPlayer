@@ -15,7 +15,8 @@ import android.view.SurfaceView;
 public class JackPlayer implements SurfaceHolder.Callback {
 
     private OnPreparedListener mOnPreparedListener;
-    private OnErrorListener onErrorListener;
+    private OnErrorListener mOnErrorListener;
+    private OnProgressListener mOnProgressListener;
     private String mSourceData;
     private SurfaceHolder mSurfaceHolder;
     private static JackPlayer mInstance;
@@ -75,7 +76,7 @@ public class JackPlayer implements SurfaceHolder.Callback {
     }
 
     public void onError(int code) {
-        if (onErrorListener != null) {
+        if (mOnErrorListener != null) {
             String msg = null;
             switch (code) {
                 case FFMPEG_CAN_NOT_OPEN_URL:
@@ -100,7 +101,7 @@ public class JackPlayer implements SurfaceHolder.Callback {
                     msg = "没有音视频";
                     break;
             }
-            onErrorListener.onError(msg);
+            mOnErrorListener.onError(msg);
         }
     }
 
@@ -152,6 +153,30 @@ public class JackPlayer implements SurfaceHolder.Callback {
         }
     }
 
+    // JNI回调时间
+    public void onProgress(int time) {
+        if (mOnProgressListener !=null) {
+            mOnProgressListener.onProgress(time);
+        }
+    }
+
+    void setOnProgressListener(OnProgressListener progressListener) {
+        this.mOnProgressListener = progressListener;
+    }
+
+    interface OnProgressListener {
+        void onProgress(int time);
+    }
+
+    /**
+     * get the total time of video
+     *
+     * @return time
+     */
+    public int getDuration() {
+        return getDurationNative();
+    }
+
     /**
      * get notification from native that player is prepared
      */
@@ -163,8 +188,8 @@ public class JackPlayer implements SurfaceHolder.Callback {
         void onError(String errorCode);
     }
 
-    public void setOnErrorListener(OnErrorListener onErrorListener) {
-        this.onErrorListener = onErrorListener;
+    void setOnErrorListener(OnErrorListener onErrorListener) {
+        this.mOnErrorListener = onErrorListener;
     }
 
     //===================Surface View回调==============================
@@ -202,4 +227,6 @@ public class JackPlayer implements SurfaceHolder.Callback {
     private native void releaseNative();
 
     private native void setSurfaceNative(Surface surface);
+
+    private native int getDurationNative();
 }

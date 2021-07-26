@@ -139,3 +139,12 @@ Java_com_gxa_jackplayer_JackPlayer_setSurfaceNative(JNIEnv *env, jobject instanc
 
     pthread_mutex_unlock(&mutex);
 }
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_gxa_jackplayer_JackPlayer_getDurationNative(JNIEnv *env, jobject instance) {
+    if (player) {
+        return player->getDuration();
+    }
+    return 0;
+}

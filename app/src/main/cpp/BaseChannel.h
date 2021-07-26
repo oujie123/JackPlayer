@@ -12,6 +12,7 @@ extern "C" {
 
 #include "safe_queue.h"
 #include "log4c.h"
+#include "JNICallbackHelper.h"
 
 #define SOURCE_QUEUE_THRESHOLD 100
 #define PRODUCER_WAITING_TIME 10 * 1000
@@ -26,6 +27,12 @@ public:
     AVCodecContext * avCodecContext = 0;
 
     AVRational time_base;  // 音视频同步参数
+
+    JNICallbackHelper *jniCallbackHelper = 0;
+
+    void setJNICallbackHelper(JNICallbackHelper *jniCallbackHelper){
+        this->jniCallbackHelper = jniCallbackHelper;
+    }
 
     BaseChannel(int stream_index,AVCodecContext *avCodecContext1, AVRational time_base);
 

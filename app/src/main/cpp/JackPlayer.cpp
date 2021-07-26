@@ -87,6 +87,9 @@ void JackPlayer::prepare_() {
         return;
     }
 
+    // 只有在avformat_find_stream_info之后拿事件才是可靠的，如果是flv格式文件中在avformat_find_stream_info之前，拿不到事件
+    duration = static_cast<int>(formatContext->duration / AV_TIME_BASE);
+
     // TODO 第三步: 根据流信息，流的个数，用循环来找，一般第0个代表视频流，第一个代表音频流
     for (int stream_index = 0; stream_index < formatContext->nb_streams; stream_index++) {
         // TODO 第四步：获取媒体流（视频，音频）
@@ -143,6 +146,11 @@ void JackPlayer::prepare_() {
         // TODO 第十步：从编解码器参数中，获取流的类型 codec_type, 判断音频 视频
         if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_AUDIO) {
             audioChannel = new AudioChannel(stream_index, avCodecContext, time_base);
+
+            // 回调方法给进度条显示
+            if (this->duration != 0) {   // 非直播才有意义
+                audioChannel->setJNICallbackHelper(helper);
+            }
         } else if (parameters->codec_type == AVMediaType::AVMEDIA_TYPE_VIDEO) {
             // 虽然是视频流，但是是封面格式，不用播放
             if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
@@ -155,6 +163,10 @@ void JackPlayer::prepare_() {
 
             videoChannel = new VideoChannel(stream_index, avCodecContext, time_base, fps);
             videoChannel->setRenderCallback(renderCallback);
+
+            if (this->duration != 0) {   // 非直播才有意义
+                videoChannel->setJNICallbackHelper(helper);
+            }
         }
     } // for end
 
@@ -254,4 +266,8 @@ void JackPlayer::start() {
 
 void JackPlayer::setRenderCallback(RenderCallback renderCallback) {
     this->renderCallback = renderCallback;
+}
+
+int JackPlayer::getDuration() {
+    return duration;
 }

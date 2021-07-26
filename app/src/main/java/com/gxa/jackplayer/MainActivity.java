@@ -6,18 +6,24 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SeekBar.OnSeekBarChangeListener {
 
     private JackPlayer mJackPlayer;
     private TextView mTvState;
     private SurfaceView mSurfaceView;
+    private TextView mTvTime;
+    private SeekBar mSeekBar;
+    private int duration;
+    private boolean isTouch = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -25,8 +31,11 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
-        mTvState = findViewById(R.id.tv_time);
+        mTvState = findViewById(R.id.tv_status);
         mSurfaceView = findViewById(R.id.surfaceView);
+        mTvTime = findViewById(R.id.tv_time);
+        mSeekBar = findViewById(R.id.seekBar);
+        mSeekBar.setOnSeekBarChangeListener(this);
 
         mJackPlayer = JackPlayer.getInstance();
         mJackPlayer.setSurfaceView(mSurfaceView);
@@ -39,9 +48,21 @@ public class MainActivity extends AppCompatActivity {
         mJackPlayer.setOnPreparedListener(new JackPlayer.OnPreparedListener() {
             @Override
             public void onPrepared() {
+
+                duration = mJackPlayer.getDuration();
+
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
+                        if (duration != 0) {
+                            mTvTime.setText("00:00/" + getMinutes(duration) + ":" + getSecond(duration));
+                            mTvTime.setVisibility(View.VISIBLE);
+                            mSeekBar.setVisibility(View.VISIBLE);
+                        } else {
+                            mTvTime.setVisibility(View.GONE);
+                            mSeekBar.setVisibility(View.GONE);
+                        }
+
                         mTvState.setTextColor(Color.GREEN); // 绿色
                         mTvState.setText("init succeed.");
                     }
@@ -63,6 +84,46 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
+
+        mJackPlayer.setOnProgressListener(new JackPlayer.OnProgressListener() {
+            @Override
+            public void onProgress(final int time) {
+                // mSeekBar.setProgress(time * 100 / duration);
+                if (!isTouch) {
+                    // 判断是人为拖动还是自动在播放
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (duration != 0) {
+                                mTvTime.setText(getMinutes(time) + ":" + getSecond(time) + "/" +
+                                        getMinutes(duration) + ":" + getSecond(duration));
+
+                                // 拖动条
+                                mSeekBar.setProgress(time * 100 / duration);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    // 获取分钟字符串
+    private String getMinutes(int duration) {
+        int min = duration / 60;
+        if (min <= 9) {
+            return "0" + min;
+        }
+        return String.valueOf(min);
+    }
+
+    // 获取秒钟字符串
+    private String getSecond(int duration) {
+        int second = duration % 60;
+        if (second <= 9) {
+            return "0" + second;
+        }
+        return String.valueOf(second);
     }
 
     @Override
@@ -87,5 +148,20 @@ public class MainActivity extends AppCompatActivity {
         if (mJackPlayer != null) {
             mJackPlayer.release();
         }
+    }
+
+    @Override
+    public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+
+    }
+
+    @Override
+    public void onStartTrackingTouch(SeekBar seekBar) {
+
+    }
+
+    @Override
+    public void onStopTrackingTouch(SeekBar seekBar) {
+
     }
 }

@@ -30,6 +30,7 @@ private:
     VideoChannel *videoChannel = 0;
     JNICallbackHelper *helper = 0;
     RenderCallback renderCallback; // VideoChannel.h已经定义，可以直接使用
+    int duration = 0;
 
 public:
     JackPlayer(const char *sourceData, JNICallbackHelper *helper);
@@ -44,6 +45,8 @@ public:
     void start_();
 
     void setRenderCallback(RenderCallback renderCallback);
+
+    int getDuration();
 };
 
 #endif //JACKPLAYER_JACKPLAYER_H

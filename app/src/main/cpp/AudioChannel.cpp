@@ -216,6 +216,10 @@ int AudioChannel::getPcm() {
         // audio_time：0.000000  0.0231123
         audio_time = frame->best_effort_timestamp * av_q2d(time_base);  // 音频播放的时间戳， 单位：时间基 （time base）
 
+        if (this->jniCallbackHelper) {
+            jniCallbackHelper->onProgress(THREAD_CHILD, static_cast<int>(audio_time));
+        }
+
         break;
     } // end while
 

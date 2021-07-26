@@ -16,6 +16,7 @@ private:
     jobject job;
     jmethodID jmd_prepared;
     jmethodID jmd_on_error;
+    jmethodID jmd_on_progress;
 
 public:
     JNICallbackHelper(JavaVM *vm, JNIEnv *env, jobject obj);
@@ -25,6 +26,8 @@ public:
     void onPrepared(int thread_mode);
 
     void onError(int thread_mode, int error_code);
+
+    void onProgress(int thread, int time);
 };
 
 #endif //JACKPLAYER_JNICALLBAKCHELPER_H
