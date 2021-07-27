@@ -23,4 +23,6 @@
 // 没有音视频
 #define FFMPEG_NOMEDIA 8
 
+#define DELETE(object) if (object) { delete object; object = nullptr;}
+
 #endif //JACKPLAYER_UTILS_H

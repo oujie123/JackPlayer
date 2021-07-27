@@ -15,6 +15,8 @@ JackPlayer::JackPlayer(const char *sourceData, JNICallbackHelper *helper) {
     strcpy(this->sourceData, sourceData);
 
     this->helper = helper;
+
+    pthread_mutex_init(&seek_mutex, nullptr);
 }
 
 JackPlayer::~JackPlayer() {
@@ -74,6 +76,8 @@ void JackPlayer::prepare_() {
             // ffmpeg 根据返回码获得错误信息
             // char *error = av_err2str(ret);
         }
+        avformat_close_input(&formatContext);
+        avformat_free_context(formatContext);
         return;
     }
 
@@ -84,11 +88,15 @@ void JackPlayer::prepare_() {
         if (helper) {
             helper->onError(THREAD_CHILD, FFMPEG_CAN_NOT_FIND_STREAMS);
         }
+        avformat_close_input(&formatContext);
+        avformat_free_context(formatContext);
         return;
     }
 
     // 只有在avformat_find_stream_info之后拿事件才是可靠的，如果是flv格式文件中在avformat_find_stream_info之前，拿不到事件
     duration = static_cast<int>(formatContext->duration / AV_TIME_BASE);
+
+    AVCodecContext *avCodecContext = 0;
 
     // TODO 第三步: 根据流信息，流的个数，用循环来找，一般第0个代表视频流，第一个代表音频流
     for (int stream_index = 0; stream_index < formatContext->nb_streams; stream_index++) {
@@ -107,16 +115,21 @@ void JackPlayer::prepare_() {
             if (helper) {
                 helper->onError(THREAD_CHILD, FFMPEG_FIND_DECODER_FAIL);
             }
+            avformat_close_input(&formatContext);
+            avformat_free_context(formatContext);
             return;
         }
 
         // TODO 第七步：编解码器 上下文
-        AVCodecContext *avCodecContext = avcodec_alloc_context3(codec);
+        avCodecContext = avcodec_alloc_context3(codec);
 
         if (!avCodecContext) {
             if (helper) {
                 helper->onError(THREAD_CHILD, FFMPEG_ALLOC_CODEC_CONTEXT_FAIL);
             }
+            avcodec_free_context(&avCodecContext);// 释放上下文，codec会自动释放
+            avformat_close_input(&formatContext);
+            avformat_free_context(formatContext);
             return;
         }
 
@@ -127,16 +140,21 @@ void JackPlayer::prepare_() {
             if (helper) {
                 helper->onError(THREAD_CHILD, FFMPEG_CODEC_CONTEXT_PARAMETERS_FAIL);
             }
+            avcodec_free_context(&avCodecContext);
+            avformat_close_input(&formatContext);
+            avformat_free_context(formatContext);
             return;
         }
 
         // TODO 第九步：打开解码器
         ret = avcodec_open2(avCodecContext, codec, nullptr);
-
         if (ret) {
             if (helper) {
                 helper->onError(THREAD_CHILD, FFMPEG_OPEN_DECODER_FAIL);
             }
+            avcodec_free_context(&avCodecContext);
+            avformat_close_input(&formatContext);
+            avformat_free_context(formatContext);
             return;
         }
 
@@ -175,10 +193,16 @@ void JackPlayer::prepare_() {
         if (helper) {
             helper->onError(THREAD_CHILD, FFMPEG_NOMEDIA);
         }
+        if (avCodecContext) {
+            avcodec_free_context(&avCodecContext);
+        }
+        avformat_close_input(&formatContext);
+        avformat_free_context(formatContext);
         return;
     }
 
     // TODO 第十二步：恭喜你，准备成功，我们的媒体文件 OK了，通知给上层
+    // 用户关闭之后界面之后不能回调到用户。
     if (helper) {
         helper->onPrepared(THREAD_CHILD);
     }
@@ -270,4 +294,97 @@ void JackPlayer::setRenderCallback(RenderCallback renderCallback) {
 
 int JackPlayer::getDuration() {
     return duration;
+}
+
+void JackPlayer::seek(int time) {
+
+    if (time < 0 || time > duration) {
+        return;
+    }
+
+    if (!audioChannel || !videoChannel) {
+        return;
+    }
+
+    if (!formatContext) {
+        return;
+    }
+
+    // 需要考虑formatContext的多线程安全性。
+    pthread_mutex_lock(&seek_mutex);
+
+    /**
+     *  -1 代表 default，自动选择音频还是视频做基准
+     *
+     *  拖动出现花屏大概率会是这个选择成了AVSEEK_FLAG_ANY
+     *  #define AVSEEK_FLAG_BACKWARD 1 ///< seek backward  向后参考，可以择优附件的关键帧，如果找不到也会花屏  ，一般采用这个
+     *  #define AVSEEK_FLAG_BYTE     2 ///< seeking based on position in bytes
+     *  #define AVSEEK_FLAG_ANY      4 ///< seek to any frame, even non-keyframes   拖到那里就显示那里，可能拖到的地方不是关键帧
+     *  #define AVSEEK_FLAG_FRAME    8 ///< seeking based on frame number  找关键帧，时间非常不准确，可能调不到关键帧，一般配合AVSEEK_FLAG_BACKWARD用
+     */
+    // av_seek_frame(formatContext, -1, time * AV_TIME_BASE, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_FRAME);
+    int ret = av_seek_frame(formatContext, -1, time * AV_TIME_BASE, AVSEEK_FLAG_BACKWARD);
+    if (ret < 0) {
+        return;
+    }
+    // seek的时候需要暂停队列
+    // audio channel : frames packets
+    // video channel : frames packets
+    if (audioChannel) {
+        audioChannel->packets.setWork(0); // 让队列不工作
+        audioChannel->frames.setWork(0);
+        audioChannel->packets.clear();
+        audioChannel->frames.clear();
+        audioChannel->packets.setWork(1);
+        audioChannel->frames.setWork(1);
+    }
+
+    if (videoChannel) {
+        videoChannel->packets.setWork(0);
+        videoChannel->frames.setWork(0);
+        videoChannel->packets.clear();
+        videoChannel->frames.clear();
+        videoChannel->packets.setWork(1);
+        videoChannel->frames.setWork(1);
+    }
+    pthread_mutex_unlock(&seek_mutex);
+}
+
+void *task_stop(void *args) {
+    JackPlayer *player = static_cast<JackPlayer *>(args);
+    player->stop_(player);
+    return nullptr;
+}
+
+void JackPlayer::stop() {
+    // 拦截所有回调
+    helper = nullptr;
+    if (audioChannel) {
+        audioChannel->jniCallbackHelper = nullptr;
+    }
+    if (videoChannel) {
+        videoChannel->jniCallbackHelper = nullptr;
+    }
+
+    // prepare_ start_释放工作，不能暴力释放
+    // 需要稳稳释放以上两个线程，再释放player的资源
+    // 如果等待线程执行完毕，可能导致ANR
+    // 需要开启stop线程来关闭所有资源，在释放自己。
+    pthread_create(&pid_stop, nullptr,task_stop,this);
+}
+
+void JackPlayer::stop_(JackPlayer *player) {
+    isPlaying = false;
+    pthread_join(pid_prepare, nullptr);  // 加入到stop线程
+    pthread_join(pid_start, nullptr);  // 加入到stop线程
+    // 到达此处pid_prepare和pid_start已经完成工作，可以安心释放自己了
+    if (formatContext) {
+        avformat_close_input(&formatContext);
+        avformat_free_context(formatContext);
+        formatContext = nullptr;
+    }
+
+    DELETE(audioChannel);
+    DELETE(videoChannel);
+    DELETE(player);
 }

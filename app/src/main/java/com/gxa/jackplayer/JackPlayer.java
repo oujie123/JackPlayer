@@ -164,6 +164,15 @@ public class JackPlayer implements SurfaceHolder.Callback {
         this.mOnProgressListener = progressListener;
     }
 
+    /**
+     * 更新播放事件都native层
+     *
+     * @param time 事件
+     */
+    public void seek(int time) {
+        seekNative(time);
+    }
+
     interface OnProgressListener {
         void onProgress(int time);
     }
@@ -229,4 +238,6 @@ public class JackPlayer implements SurfaceHolder.Callback {
     private native void setSurfaceNative(Surface surface);
 
     private native int getDurationNative();
+
+    private native void seekNative(int time);
 }

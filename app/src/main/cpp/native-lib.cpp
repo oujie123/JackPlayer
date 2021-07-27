@@ -4,9 +4,9 @@
 #include "log4c.h"
 #include <android/native_window_jni.h> // ANativeWindow 用来渲染画面的 == Surface对象
 
-JackPlayer *player = 0;
-JavaVM *vm = 0;
-ANativeWindow *window = 0;
+JackPlayer *player = nullptr;
+JavaVM *vm = nullptr;
+ANativeWindow *window = nullptr;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; // 静态初始化锁
 
 /**
@@ -110,17 +110,25 @@ Java_com_gxa_jackplayer_JackPlayer_startNative(JNIEnv *env, jobject instance) {
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_gxa_jackplayer_JackPlayer_stopNative(JNIEnv *env, jobject instance) {
-
-    // TODO
+    if (player) {
+        player->stop();
+    }
 
 }
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_gxa_jackplayer_JackPlayer_releaseNative(JNIEnv *env, jobject instance) {
+    pthread_mutex_lock(&mutex);
+    if (window) {
+        ANativeWindow_release(window);
+        window = 0;
+    }
+    pthread_mutex_unlock(&mutex);
 
-    // TODO
-
+    DELETE(player);
+    DELETE(vm);
+    DELETE(window);
 }
 
 extern "C"
@@ -147,4 +155,14 @@ Java_com_gxa_jackplayer_JackPlayer_getDurationNative(JNIEnv *env, jobject instan
         return player->getDuration();
     }
     return 0;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_gxa_jackplayer_JackPlayer_seekNative(JNIEnv *env, jobject instance, jint time) {
+
+    int current_time = time;
+    if (player) {
+        player->seek(current_time);
+    }
 }

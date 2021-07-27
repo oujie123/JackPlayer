@@ -45,7 +45,10 @@ AudioChannel::AudioChannel(int stream_index, AVCodecContext *avCodecContext, AVR
 }
 
 AudioChannel::~AudioChannel() {
-
+    if (swr_context) {
+        swr_free(&swr_context);
+    }
+    DELETE(out_buffer);
 }
 
 void *task_audio_decode(void *args) {
@@ -78,7 +81,35 @@ void AudioChannel::start() {
 }
 
 void AudioChannel::stop() {
+    // 等解码和播放线程停止，在回收资源
+    pthread_join(pid_audio_decode, nullptr);
+    pthread_join(pid_audio_play, nullptr);
 
+    isPlaying = false;
+    packets.setWork(0);
+    frames.setWork(0);
+
+    // OpenSL ES释放
+    if (bqPlayerItf) {
+        (*bqPlayerItf)->SetPlayState(bqPlayerItf,SL_PLAYSTATE_STOPPED);
+        bqPlayerItf = nullptr;
+    }
+    if (bqPlayerObject) {
+        (*bqPlayerObject)->Destroy(bqPlayerObject);
+        bqPlayerObject = nullptr;
+        bqPlayerBufferQueue = nullptr;
+    }
+    if (outputMixObject) {
+        (*outputMixObject)->Destroy(outputMixObject);
+        outputMixObject = nullptr;
+    }
+    if (engineObject) {
+        (*engineObject)->Destroy(engineObject);
+        engineObject = nullptr;
+    }
+    // 清空队列
+    packets.clear();
+    frames.clear();
 }
 
 void AudioChannel::audioDecode() {

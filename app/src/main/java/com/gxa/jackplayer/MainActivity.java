@@ -2,6 +2,7 @@ package com.gxa.jackplayer;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Environment;
@@ -92,6 +93,7 @@ public class MainActivity extends AppCompatActivity implements SeekBar.OnSeekBar
                 if (!isTouch) {
                     // 判断是人为拖动还是自动在播放
                     runOnUiThread(new Runnable() {
+                        @SuppressLint("SetTextI18n")
                         @Override
                         public void run() {
                             if (duration != 0) {
@@ -150,18 +152,34 @@ public class MainActivity extends AppCompatActivity implements SeekBar.OnSeekBar
         }
     }
 
+    /**
+     * @param seekBar  控件
+     * @param progress 1 - 100%
+     * @param fromUser 是否是用户拖动改变
+     */
+    @SuppressLint("SetTextI18n")
     @Override
     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-
+        if (fromUser) {
+            mTvTime.setText(getMinutes(progress * duration / 100) + ":" + getSecond(progress * duration / 100) + "/" +
+                    getMinutes(duration) + ":" + getSecond(duration));
+        }
     }
 
     @Override
     public void onStartTrackingTouch(SeekBar seekBar) {
-
+        isTouch = true;
     }
 
     @Override
     public void onStopTrackingTouch(SeekBar seekBar) {
+        isTouch = false;
 
+        int currentProgress = seekBar.getProgress();
+
+        // 1 - 100 需要转化成c++的时间戳
+        int playProgress = currentProgress * duration / 100;
+
+        mJackPlayer.seek(playProgress);
     }
 }

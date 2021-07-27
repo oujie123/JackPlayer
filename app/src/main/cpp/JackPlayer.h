@@ -25,12 +25,15 @@ private:
     bool isPlaying = 0;
     pthread_t pid_prepare;
     pthread_t pid_start;
+    pthread_t pid_stop;
     AVFormatContext *formatContext = 0;
     AudioChannel *audioChannel = 0;
     VideoChannel *videoChannel = 0;
     JNICallbackHelper *helper = 0;
     RenderCallback renderCallback; // VideoChannel.h已经定义，可以直接使用
     int duration = 0;
+
+    pthread_mutex_t seek_mutex;
 
 public:
     JackPlayer(const char *sourceData, JNICallbackHelper *helper);
@@ -47,6 +50,12 @@ public:
     void setRenderCallback(RenderCallback renderCallback);
 
     int getDuration();
+
+    void seek(int time);
+
+    void stop();
+
+    void stop_(JackPlayer *);
 };
 
 #endif //JACKPLAYER_JACKPLAYER_H
