@@ -91,7 +91,7 @@ void AudioChannel::stop() {
 
     // OpenSL ES释放
     if (bqPlayerItf) {
-        (*bqPlayerItf)->SetPlayState(bqPlayerItf,SL_PLAYSTATE_STOPPED);
+        (*bqPlayerItf)->SetPlayState(bqPlayerItf, SL_PLAYSTATE_STOPPED);
         bqPlayerItf = nullptr;
     }
     if (bqPlayerObject) {
@@ -245,7 +245,8 @@ int AudioChannel::getPcm() {
          */
 
         // audio_time：0.000000  0.0231123
-        audio_time = frame->best_effort_timestamp * av_q2d(time_base);  // 音频播放的时间戳， 单位：时间基 （time base）
+        audio_time =
+                frame->best_effort_timestamp * av_q2d(time_base);  // 音频播放的时间戳， 单位：时间基 （time base）
 
         if (this->jniCallbackHelper) {
             jniCallbackHelper->onProgress(THREAD_CHILD, static_cast<int>(audio_time));
@@ -310,23 +311,23 @@ void AudioChannel::audioPlay() {
 
     // 如果不启用混响，可以不获取混音器接口
     // TODO 2.3 获取混响器接口
-    result = (*outputMixObject)->GetInterface(outputMixObject, SL_IID_ENVIRONMENTALREVERB,
-                                              &outputMixEnvironmentalReverb);
-    if (SL_RESULT_SUCCESS != result) {
-        LOGE("get mix environment error.");
-        return;
-    }
+//    result = (*outputMixObject)->GetInterface(outputMixObject, SL_IID_ENVIRONMENTALREVERB,
+//                                              &outputMixEnvironmentalReverb);
+//    if (SL_RESULT_SUCCESS != result) {
+//        LOGE("get mix environment error.");
+//        return;
+//    }
 
     // 设置默认混响器
     //SL_I3DL2_ENVIRONMENT_PRESET_ROOM: 室内
     //SL_I3DL2_ENVIRONMENT_PRESET_AUDITORIUM: 礼堂
-    const SLEnvironmentalReverbSettings settings = SL_I3DL2_ENVIRONMENT_PRESET_DEFAULT;
-    result = (*outputMixEnvironmentalReverb)->SetEnvironmentalReverbProperties(
-            outputMixEnvironmentalReverb, &settings);
-    if (SL_RESULT_SUCCESS != result) {
-        LOGE("set environment effect error.");
-        return;
-    }
+//    const SLEnvironmentalReverbSettings settings = SL_I3DL2_ENVIRONMENT_PRESET_DEFAULT;
+//    result = (*outputMixEnvironmentalReverb)->SetEnvironmentalReverbProperties(
+//            outputMixEnvironmentalReverb, &settings);
+//    if (SL_RESULT_SUCCESS != result) {
+//        LOGE("set environment effect error.");
+//        return;
+//    }
     LOGI("set mix success.");
 
     // TODO 3.创建播放器
@@ -342,7 +343,7 @@ void AudioChannel::audioPlay() {
     // SL_PCMSAMPLEFORMAT_FIXED_16:数据格式为16bit
     // SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT : 左右双声道
     // SL_BYTEORDER_LITTLEENDIAN:小端模式
-    SLDataFormat_PCM format_pcm = {SL_DATAFORMAT_PCM, SL_SAMPLINGRATE_44_1,
+    SLDataFormat_PCM format_pcm = {SL_DATAFORMAT_PCM, 2, SL_SAMPLINGRATE_44_1,
                                    SL_PCMSAMPLEFORMAT_FIXED_16, SL_PCMSAMPLEFORMAT_FIXED_16,
                                    SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT,
                                    SL_BYTEORDER_LITTLEENDIAN};
@@ -369,7 +370,7 @@ void AudioChannel::audioPlay() {
             ids, // 开放buff队列
             req); // 将buff队列开放出去
     if (SL_RESULT_SUCCESS != result) {
-        LOGE("create player error.");
+        LOGE("create player error. result->%x", result);
         return;
     }
 

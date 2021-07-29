@@ -6,6 +6,7 @@ import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Environment;
+import android.util.Log;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
@@ -40,7 +41,7 @@ public class MainActivity extends AppCompatActivity implements SeekBar.OnSeekBar
 
         mJackPlayer = JackPlayer.getInstance();
         mJackPlayer.setSurfaceView(mSurfaceView);
-        mJackPlayer.setSourceData(new File(Environment.getExternalStorageDirectory() + File.separator + "demo.mp4")
+        mJackPlayer.setSourceData(new File(getExternalCacheDir() + File.separator + "demo.mp4")
                 .getAbsolutePath());
 
         // 拉流方式播放
